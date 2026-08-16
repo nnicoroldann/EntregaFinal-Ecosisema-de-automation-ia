@@ -1,0 +1,651 @@
+{
+  "name": "Triage Ipanel - Final",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Atención al Cliente",
+        "formDescription": "Escribinos tu consulta y te responderemos a la brevedad",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Mensaje del Cliente",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Nombre"
+            },
+            {
+              "fieldLabel": "Email de contacto",
+              "fieldType": "email"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -1168,
+        880
+      ],
+      "id": "6cd53c90-5630-4df4-b26c-30c2a1f69c7f",
+      "name": "Trigger - Formulario de Consulta",
+      "webhookId": "c76615d7-8746-4666-9210-3f18907413a1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "val-cond-1",
+              "leftValue": "={{ $json['Mensaje del Cliente'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "name": "filter.operator.notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -944,
+        880
+      ],
+      "id": "f552744f-7324-4383-b1e9-fb3d93706ecf",
+      "name": "Validar Datos Completos"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"Sos un asistente de un negocio de venta y reparación de celulares. Leé este mensaje de un cliente y respondé SOLO con un JSON, sin texto adicional ni explicación, con este formato exacto: {\\\"tipo\\\": \\\"Consulta de venta\\\" o \\\"Garantía\\\" o \\\"Servicio técnico\\\", \\\"prioridad\\\": \\\"VIP\\\" o \\\"Normal\\\", \\\"resumen\\\": \\\"resumen corto en una linea\\\"}. Mensaje del cliente: {{ $json['Mensaje del Cliente'] }}\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -720,
+        800
+      ],
+      "id": "fa3c56a6-5f2a-4b6f-a7d2-f201a7615e63",
+      "name": "Clasificar Consulta con IA (Gemini)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tmM4wRcbv2s0At1Y",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const rawText = $input.item.json.candidates[0].content.parts[0].text;\n  const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n\n  if (!parsed.tipo || !parsed.prioridad || !parsed.resumen) {\n    throw new Error('La IA devolvió un JSON incompleto');\n  }\n\n  return {\n    tipo: parsed.tipo,\n    prioridad: parsed.prioridad,\n    resumen: parsed.resumen,\n    aiError: false\n  };\n} catch (err) {\n  return {\n    aiError: true,\n    errorMessage: 'Fallo al parsear respuesta de IA: ' + err.message\n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        800
+      ],
+      "id": "37d11f3d-cfb4-463f-ba3e-7142438df4f6",
+      "name": "Parsear Respuesta IA"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "err-cond-1",
+              "leftValue": "={{ $json.aiError }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -272,
+        800
+      ],
+      "id": "0a877055-116e-4c04-8178-65739dd31899",
+      "name": "¿Falló el Procesamiento IA?"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "dataSourceId": {
+          "__rl": true,
+          "value": "3bdf3c3c-d927-80c8-a88d-000b379d3de6",
+          "mode": "list",
+          "cachedResultName": "Solicitudes"
+        },
+        "title": "={{ 'ERROR - ' + $now.format('dd/MM HH:mm') }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Nombre|title",
+              "title": "={{ 'Error - ' + $now.format('dd/MM HH:mm') }}"
+            },
+            {
+              "key": "Prioridad|select",
+              "selectValue": "Normal"
+            },
+            {
+              "key": "Estado|select",
+              "selectValue": "Error"
+            },
+            {
+              "key": "Resumen IA|rich_text",
+              "textContent": "={{ $json.errorMessage || 'Fallo de API o dato faltante. Ver ejecución en n8n: ' + $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        -720,
+        1120
+      ],
+      "id": "9bc3e361-dcae-41ea-8277-d6ae8594a2d9",
+      "name": "Registrar Error en Notion",
+      "credentials": {
+        "notionApi": {
+          "id": "pFv3D6B45wKWxDuI",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "dataSourceId": {
+          "__rl": true,
+          "value": "3bdf3c3c-d927-80c8-a88d-000b379d3de6",
+          "mode": "list",
+          "cachedResultName": "Solicitudes",
+          "cachedResultUrl": "https://app.notion.com/p/3bdf3c3cd92780bb8001dd9e83b59391"
+        },
+        "title": "={{ 'Solicitud - ' + $now.format('dd/MM HH:mm') }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Nombre|title",
+              "title": "={{ $('Trigger - Formulario de Consulta').item.json['Nombre'] || 'Cliente sin nombre' }}"
+            },
+            {
+              "key": "TIpo|select",
+              "selectValue": "={{ $json.tipo }}"
+            },
+            {
+              "key": "Prioridad|select",
+              "selectValue": "={{ $json.prioridad }}"
+            },
+            {
+              "key": "Estado|select",
+              "selectValue": "Procesado por IA"
+            },
+            {
+              "key": "Resumen IA|rich_text",
+              "textContent": "={{ $json.resumen }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        -48,
+        720
+      ],
+      "id": "619dc27a-a9af-4705-b268-2941b9b8dc8c",
+      "name": "Crear Solicitud en Notion",
+      "credentials": {
+        "notionApi": {
+          "id": "pFv3D6B45wKWxDuI",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "https://app.slack.com/client/T0BQ0NGHV2B/C0BQJ2DMJAV",
+          "mode": "url"
+        },
+        "message": "=Nueva consulta clasificada:\n*Tipo:* {{ $('Parsear Respuesta IA').item.json.tipo }}\n*Prioridad:* {{ $('Parsear Respuesta IA').item.json.prioridad }}\n*Resumen:* {{ $('Parsear Respuesta IA').item.json.resumen }}\n\n¿Aprobás que se procese y se marque como atendida?",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        720
+      ],
+      "id": "016aeebe-e6e6-4699-8f9a-5b80addcb5b8",
+      "name": "Esperar Aprobación Humana (Slack)",
+      "webhookId": "69c30b9a-1852-4d43-8ef0-253161060878",
+      "credentials": {
+        "slackApi": {
+          "id": "pW7f4QryeuBY1EKi",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "approved-cond-1",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        720
+      ],
+      "id": "e5c3c68d-9410-44bf-863e-f0744a09a7fa",
+      "name": "¿Fue Aprobado?"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Crear Solicitud en Notion').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Estado|select",
+              "selectValue": "Aprobado por Humano"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        624,
+        624
+      ],
+      "id": "b765c3c7-1391-482d-b0a9-bd90b7665f65",
+      "name": "Actualizar Estado - Aprobado",
+      "credentials": {
+        "notionApi": {
+          "id": "pFv3D6B45wKWxDuI",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Crear Solicitud en Notion').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Estado|select",
+              "selectValue": "Rechazado por Humano"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        624,
+        848
+      ],
+      "id": "6a930620-8ef1-4aab-8872-6027a02b1f3c",
+      "name": "Actualizar Estado - Rechazado",
+      "credentials": {
+        "notionApi": {
+          "id": "pFv3D6B45wKWxDuI",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "dataSourceId": {
+          "__rl": true,
+          "value": "3bdf3c3c-d927-80ac-ab33-000b45b36b0e",
+          "mode": "list",
+          "cachedResultName": "Interacciones",
+          "cachedResultUrl": "https://app.notion.com/p/3bdf3c3cd9278008bff2ca97fe1ddf97"
+        },
+        "title": "={{ $('Trigger - Formulario de Consulta').item.json['Mensaje del Cliente'] }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Respuesta IA|rich_text",
+              "textContent": "={{ $('Parsear Respuesta IA').item.json.resumen }}"
+            },
+            {
+              "key": "Fecha|date",
+              "date": "={{ $now.toISO() }}"
+            },
+            {
+              "key": "Solicitud|relation",
+              "relationValue": [
+                "={{ [{ id: $('Crear Solicitud en Notion').item.json.id }] }}"
+              ]
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        992,
+        624
+      ],
+      "id": "3d637885-3008-4388-9e07-7d199e02d031",
+      "name": "Registrar Interacción Final",
+      "credentials": {
+        "notionApi": {
+          "id": "pFv3D6B45wKWxDuI",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "https://app.slack.com/client/T0BQ0NGHV2B/C0BQJ2DMJAV",
+          "mode": "url"
+        },
+        "text": "==✅ *Aprobado*\n\n*Tipo:* {{ $('Parsear Respuesta IA').item.json.tipo }}\n*Prioridad:* {{ $('Parsear Respuesta IA').item.json.prioridad }}\n*Resumen:* {{ $('Parsear Respuesta IA').item.json.resumen }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        816,
+        624
+      ],
+      "id": "28758099-1238-4351-9bb3-6ab70ff7e6f2",
+      "name": "Actualizar Mensaje Slack - Aprobado",
+      "webhookId": "69c30b9a-1852-4d43-8ef0-253161060878",
+      "credentials": {
+        "slackApi": {
+          "id": "pW7f4QryeuBY1EKi",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "https://app.slack.com/client/T0BQ0NGHV2B/C0BQJ2DMJAV",
+          "mode": "url"
+        },
+        "text": "==❌ *Rechazado*\n\n*Tipo:* {{ $('Parsear Respuesta IA').item.json.tipo }}\n*Prioridad:* {{ $('Parsear Respuesta IA').item.json.prioridad }}\n*Resumen:* {{ $('Parsear Respuesta IA').item.json.resumen }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        848
+      ],
+      "id": "88ab7374-b59e-444c-9212-13e515ca8f11",
+      "name": "Actualizar Mensaje Slack - Rechazado",
+      "webhookId": "69c30b9a-1852-4d43-8ef0-253161060878",
+      "credentials": {
+        "slackApi": {
+          "id": "pW7f4QryeuBY1EKi",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger - Formulario de Consulta": {
+      "main": [
+        [
+          {
+            "node": "Validar Datos Completos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Datos Completos": {
+      "main": [
+        [
+          {
+            "node": "Clasificar Consulta con IA (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar Consulta con IA (Gemini)": {
+      "main": [
+        [
+          {
+            "node": "Parsear Respuesta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Respuesta IA": {
+      "main": [
+        [
+          {
+            "node": "¿Falló el Procesamiento IA?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Falló el Procesamiento IA?": {
+      "main": [
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear Solicitud en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Solicitud en Notion": {
+      "main": [
+        [
+          {
+            "node": "Esperar Aprobación Humana (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar Aprobación Humana (Slack)": {
+      "main": [
+        [
+          {
+            "node": "¿Fue Aprobado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Fue Aprobado?": {
+      "main": [
+        [
+          {
+            "node": "Actualizar Estado - Aprobado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Actualizar Estado - Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar Estado - Aprobado": {
+      "main": [
+        [
+          {
+            "node": "Actualizar Mensaje Slack - Aprobado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar Mensaje Slack - Aprobado": {
+      "main": [
+        [
+          {
+            "node": "Registrar Interacción Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar Estado - Rechazado": {
+      "main": [
+        [
+          {
+            "node": "Actualizar Mensaje Slack - Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "HJ8sjbYXFwPYryNf"
+  },
+  "versionId": "b903d545-a57d-4485-9cc1-5c5fee834204",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fc0db66322ee7ef62def8ae1ebfb1ad7f10c498806c4346fd60bdaac772cec49"
+  },
+  "nodeGroups": [],
+  "id": "CsTQNDnDYely3dyR",
+  "tags": []
+}
